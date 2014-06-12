@@ -127,7 +127,7 @@ class Picture {
     
     $class = (!empty($this->className)) ? ' class="' . $this->className . '"' : '';
     
-    return sprintf('<img %1$s data-rsw="%2$s" data-rsh="%3$s" %4$s %5$s alt="%6$s" />',
+    return sprintf('<img %1$s data-width="%2$s" data-height="%3$s" %4$s %5$s alt="%6$s" />',
       $class,
       $this->obj->width(),
       $this->obj->height(),
