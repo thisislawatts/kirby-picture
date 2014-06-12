@@ -23,9 +23,13 @@ class Picture {
   var $upscale = false;
   var $quality = 100;
   var $alt = false;
+  
+  // Options
   var $crop = false;
   var $grayscale = false;
   var $datauri = false;
+  var $lazyload = false;
+
   var $sources = array();
   var $sizes = array(
     array(
@@ -67,6 +71,9 @@ class Picture {
     // set the max width and height
     $this->maxWidth     = @$options['width'];
     $this->maxHeight    = @$options['height'];
+
+    // set lazyload on/off
+    $this->lazyload = @$options['lazyload'];
 
     // set crop on/off
     $this->crop = @$options['crop'];
@@ -120,8 +127,13 @@ class Picture {
     
     $class = (!empty($this->className)) ? ' class="' . $this->className . '"' : '';
     
-    return '<img' . $class . ' data-rsw="' . $this->obj->width() . '" data-rsh="' . $this->obj->height() . '" sizes="100vw" srcset="' . $this->srcset() . '" alt="' . html( $this->alt ) . '" />';  
-
+    return sprintf('<img %1$s data-rsw="%2$s" data-rsh="%3$s" sizes="100vw" %4$s alt="%5$s" />',
+      $class,
+      $this->obj->width(),
+      $this->obj->height(),
+      $this->lazyload ? 'data-srcset="' . $this->srcset() . '"' : 'srcset="' . $this->srcset() . '"',
+      html( $this->alt )
+    );
   }
   
   function filename() {
