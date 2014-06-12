@@ -1,0 +1,31 @@
+# Picture Plugin
+
+## What is it?
+
+The picture plugin makes it easy to include smaller, resized versions of your images in your pages without adding extra code or uploading smaller versions yourself. 
+
+## Installation 
+
+Put the picture/ directory in your site/plugins folder. Add the plugins folder if it isn't there yet. Add a pictures folder to the root dir of your site and make sure it is writable. If you want to change the location of your picture cache folder read more about the available default settings further down. 
+
+Include the bundled version of picturefill.js in the head of your document, 
+
+## How to use it?
+
+	<?php picture($image); ?>
+
+## Available settings
+
+You can add the following config variables to your config file (site/config/config.php) to adjust the default settings of the thumb plugin:
+
+    c::set('picture.cache.root', c::get('root') . '/pictures');
+    c::set('picture.cache.url',  c::get('url')  . '/pictures');
+    c::set('picture.quality', 100);
+
+## Requirements
+
+You must have GD Lib installed on your server for this plugin to work. 
+	    
+## Author
+Luke Watts
+<http://thisis.la>
