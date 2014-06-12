@@ -8,7 +8,9 @@ The picture plugin makes it easy to include smaller, resized versions of your im
 
 Put the picture/ directory in your site/plugins folder. Add the plugins folder if it isn't there yet. Add a pictures folder to the root dir of your site and make sure it is writable. If you want to change the location of your picture cache folder read more about the available default settings further down. 
 
-Include the bundled version of picturefill.js in the head of your document, 
+Be sure to include the bundled version of picturefill.js in the head of your document, 
+
+	<?php echo js('site/plugins/kirby-picture/js/picturefill.min.js'); ?>
 
 ## How to use it?
 
