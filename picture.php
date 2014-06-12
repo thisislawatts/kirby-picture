@@ -127,10 +127,11 @@ class Picture {
     
     $class = (!empty($this->className)) ? ' class="' . $this->className . '"' : '';
     
-    return sprintf('<img %1$s data-rsw="%2$s" data-rsh="%3$s" sizes="100vw" %4$s alt="%5$s" />',
+    return sprintf('<img %1$s data-rsw="%2$s" data-rsh="%3$s" %4$s %5$s alt="%6$s" />',
       $class,
       $this->obj->width(),
       $this->obj->height(),
+      $this->lazyload ? 'data-sizes="100vw"' : 'sizes="100vw"',
       $this->lazyload ? 'data-srcset="' . $this->srcset() . '"' : 'srcset="' . $this->srcset() . '"',
       html( $this->alt )
     );
