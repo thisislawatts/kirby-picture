@@ -72,6 +72,8 @@ class Picture {
     $this->maxWidth     = @$options['width'];
     $this->maxHeight    = @$options['height'];
 
+    $this->data = a::get($options, 'data', array() );
+
     // set lazyload on/off
     $this->lazyload = @$options['lazyload'];
 
@@ -124,17 +126,32 @@ class Picture {
   function tag() {
 
     if(!$this->obj) return false;
-    
+
     $class = (!empty($this->className)) ? ' class="' . $this->className . '"' : '';
-    
-    return sprintf('<img %1$s data-width="%2$s" data-height="%3$s" %4$s %5$s alt="%6$s" />',
+
+    return sprintf('<img %1$s data-width="%2$s" data-height="%3$s" %4$s %5$s %7$s alt="%6$s" />',
       $class,
       $this->obj->width(),
       $this->obj->height(),
       $this->lazyload ? 'data-sizes="100vw"' : 'sizes="100vw"',
       $this->lazyload ? 'data-srcset="' . $this->srcset() . '"' : 'srcset="' . $this->srcset() . '"',
-      html( $this->alt )
+      html( $this->alt ),
+      $this->dataAttr()
     );
+  }
+
+  function dataAttr() {
+
+    $dataString = ' ';
+
+    foreach ( $this->data as $property => $value ) {
+
+      if ($value)
+        $dataString .= ' data-' . $property . '="' . $value . '"';
+    }
+
+
+    return $dataString;
   }
   
   function filename() {
@@ -250,7 +267,7 @@ class Picture {
       'msg'    => 'GD Lib is not installed'
     );
 
-    if(file_exists($file) && (filectime($this->source) < filectime($file) || filemtime($this->source) < filemtime($file))) {
+    if(file_exists($file) && (@filectime($this->source) < @filectime($file) || filemtime($this->source) < filemtime($file))) {
 
       array_push( $this->sources, $this->url . '/' . $this->filename() );
 
