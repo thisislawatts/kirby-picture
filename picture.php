@@ -1,8 +1,32 @@
 <?php
 
+/**
+ * [picture description]
+ * @param  Image  $obj     [description]
+ * @param  array   $options [description]
+ * @param  boolean $tag     [description]
+ * @return [type]           [description]
+ */
 function picture($obj, $options=array(), $tag=true) {
   $picture = new Picture($obj, $options);
   return ($tag) ? $picture->tag() : $picture->url();
+}
+
+if (r::is_ajax() && r::get('action') === 'kirby.picture' ) {
+
+  $picture = new Picture( r::get('image') );
+
+  echo json_encode(
+    array_merge(
+      array(
+        'action'  => 'generated-image',
+        'image'   => r::get('image'),
+      ),
+      $picture->status
+    )
+  );
+
+  exit();
 }
 
 class Picture {
@@ -31,7 +55,8 @@ class Picture {
   var $lazyload = false;
 
   var $sources = array();
-  var $sizes = array(
+  
+  static $sizes = array(
     array(
       'width'      => 1600,
       'height'     => 1600,
@@ -50,11 +75,26 @@ class Picture {
      )
   );
 
-  function __construct($image, $options=array()) {
+  function imageFromPath( $file ) {
+    $info = array(
+      'name'      => f::name($file),
+      'filename'  => f::filename($file),
+      'extension' => f::extension($file),
+      'root'      => $file,
+      'modified'  => @filectime($page->root . '/' . $file),
+      'type'      => 'image'
+    );
 
+    return new image( $info );
+  }
+
+  function __construct($image, $options=array()) {
 
     $this->root = c::get('picture.cache.root', c::get('root') . '/pictures');
     $this->url  = c::get('picture.cache.url',  c::get('url')  . '/pictures');
+
+    if ( gettype($image) === 'string' )
+      $image = self::imageFromPath( $image );
 
     if(!$image) return false;
     
@@ -98,10 +138,10 @@ class Picture {
     // set the className text
     $this->className = @$options['class'];
 
-//    $this->create();
+    // $this->create();
 
     // Create our images at different sizes!
-    foreach ( $this->sizes as $size ) {
+    foreach ( self::$sizes as $size ) {
       $this->size( $size['width'], $size['height'] );
       $this->create();
     }
@@ -154,18 +194,19 @@ class Picture {
     return $dataString;
   }
   
+  /**
+   * Creates a filename for the generated image
+   * based on it's original filename
+   * @return [type] [description]
+   */
   function filename() {
   
     $options = false;
   
     $options .= ($this->maxWidth)  ? '.' . $this->maxWidth  : '.' . 0;
     $options .= ($this->maxHeight) ? '.' . $this->maxHeight : '.' . 0;
-    $options .= ($this->upscale)   ? '.' . $this->upscale   : '.' . 0;
-    $options .= ($this->crop)      ? '.' . $this->crop      : '.' . 0;
-    $options .= ($this->grayscale) ? '.' . $this->grayscale : '.' . 0;
-    $options .= '.' . $this->quality;
 
-    return md5($this->source) . $options . '.' . $this->obj->extension;
+    return md5( $this->source ) . $options . '.' . $this->obj->extension;
 
   }
       
@@ -256,6 +297,10 @@ class Picture {
     
     return $size;
         
+  }
+
+  public static function getSizes() {
+    return self::$sizes;
   }
   
   function create() {
