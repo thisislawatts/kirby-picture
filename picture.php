@@ -16,18 +16,41 @@ if (r::is_ajax() && r::get('action') === 'kirby.picture' ) {
 
   $picture = new Picture( r::get('image') );
 
-  echo json_encode(
-    array_merge(
-      array(
-        'action'  => 'generated-image',
-        'image'   => r::get('image'),
-      ),
-      $picture->status
+  echo @json_encode(
+    array(
+      'status' => $picture->status,
+      'message' => $picture->msg,
+      'action'  => 'generated-image',
+      'image'   => r::get('image'),
+      'srcset'  => $picture->srcset(),
+      'data' => $picture
     )
   );
 
   exit();
 }
+
+
+/**
+ * 
+ * 
+ */
+class PictureLoading {
+  public static $counter = array();
+
+  public static function set($key, $data) {
+    return self::$counter[ $key ] = $data; 
+  }
+
+  public static function get() {
+    return self::$counter;
+  }
+
+  public static function json() {
+    return json_encode( self::$counter );
+  }
+}
+
 
 class Picture {
 
@@ -43,7 +66,7 @@ class Picture {
   var $maxWidth = 0;
   var $maxHeight = 0;
   var $mime = false;
-  var $status = array();
+  var $status = '';
   var $upscale = false;
   var $quality = 100;
   var $alt = false;
@@ -51,7 +74,6 @@ class Picture {
   // Options
   var $crop = false;
   var $grayscale = false;
-  var $datauri = false;
   var $lazyload = false;
 
   var $sources = array();
@@ -75,13 +97,15 @@ class Picture {
      )
   );
 
-  function imageFromPath( $file ) {
+  public static function getImageFromUrl( $url ) {
+
+    $file = str_ireplace( 'http://' . $_SERVER['HTTP_HOST'], c::get('root'), $url );
     $info = array(
       'name'      => f::name($file),
       'filename'  => f::filename($file),
       'extension' => f::extension($file),
       'root'      => $file,
-      'modified'  => @filectime($page->root . '/' . $file),
+      'modified'  => @filectime( $page->root . '/' . $file),
       'type'      => 'image'
     );
 
@@ -90,11 +114,12 @@ class Picture {
 
   function __construct($image, $options=array()) {
 
+
     $this->root = c::get('picture.cache.root', c::get('root') . '/pictures');
-    $this->url  = c::get('picture.cache.url',  c::get('url')  . '/pictures');
+    $this->root = c::get('picture.cache.url', '/pictures');
 
     if ( gettype($image) === 'string' )
-      $image = self::imageFromPath( $image );
+      $image = self::getImageFromUrl( $image );
 
     if(!$image) return false;
     
@@ -129,18 +154,32 @@ class Picture {
     // set the default upscale behavior
     $this->upscale = a::get($options, 'upscale', c::get('picture.upscale', false));
 	
-    // set datauri on/off
-    $this->datauri = a::get($options, 'datauri', c::get('picture.datauri', false));
-
     // set the alt text
     $this->alt = a::get($options, 'alt', $this->obj->name());
 
     // set the className text
     $this->className = @$options['class'];
 
-    // $this->create();
+    $this->id = md5( $image->url() );
 
-    // Create our images at different sizes!
+    if ( c::get('picture.ajax', true ) && !r::is_ajax() && !$this->cachedImagesExist() ) {
+      PictureLoading::set( $this->id, $image->url() );
+    } else {
+      $this->generateImages();
+    }
+  }
+
+  function cachedImagesExist() {
+    foreach (self::$sizes as $size ) {
+      $this->size( $size['width'], $size['height'] );
+      if ( !file_exists( $this->file() ) )
+        return false;
+    }
+    return true;
+  }
+
+  // Create our images at different sizes!
+  function generateImages() {
     foreach ( self::$sizes as $size ) {
       $this->size( $size['width'], $size['height'] );
       $this->create();
@@ -149,11 +188,16 @@ class Picture {
 
   function srcset() {
 
-    $sources = array_reverse($this->sources);
-
+    if (count($this->sources) === 0 ) {
+      foreach ( self::$sizes as $size ) {
+        $this->size( $size['width'], $size['height'] );
+        array_push( $this->sources, $this->url . '/' . $this->filename() );
+      }
+    }
+    
     $srcset = array();
 
-    foreach ($sources as $src) {
+    foreach ($this->sources as $src) {
 
       $parts = explode('.', $src);
 
@@ -169,10 +213,11 @@ class Picture {
 
     $class = (!empty($this->className)) ? ' class="' . $this->className . '"' : '';
 
-    return sprintf('<img %1$s data-width="%2$s" data-height="%3$s" %4$s %5$s %7$s alt="%6$s" />',
+    $this->data['width'] = $this->obj->width();
+    $this->data['height'] = $this->obj->height();
+
+    return sprintf('<img id="'. $this->id .'" %1$s %2$s %3$s %5$s alt="%4$s" />',
       $class,
-      $this->obj->width(),
-      $this->obj->height(),
       $this->lazyload ? 'data-sizes="100vw"' : 'sizes="100vw"',
       $this->lazyload ? 'data-srcset="' . $this->srcset() . '"' : 'srcset="' . $this->srcset() . '"',
       html( $this->alt ),
@@ -182,14 +227,12 @@ class Picture {
 
   function dataAttr() {
 
-    $dataString = ' ';
+    $dataString = '';
 
     foreach ( $this->data as $property => $value ) {
-
       if ($value)
         $dataString .= ' data-' . $property . '="' . $value . '"';
     }
-
 
     return $dataString;
   }
@@ -215,11 +258,7 @@ class Picture {
   }
 
   function url() {
-    if($this->datauri == true) {
-      return (error($this->status)) ? $this->obj->url() : 'data:' . $this->mime . ';base64,' . base64_encode(file_get_contents($this->file()));
-  	} else {
-        return (error($this->status)) ? $this->obj->url() : $this->url . '/' . $this->filename() . '?' . filemtime($this->file());
-  	}
+    return (error($this->status)) ? $this->obj->url() : $this->url . '/' . $this->filename() . '?' . filemtime($this->file());
   }
   
   function size( $width = false , $height = false ) {
@@ -307,25 +346,30 @@ class Picture {
     
     $file = $this->file();            
 
-    if(!function_exists('gd_info')) return $this->status = array(
-      'status' => 'error',
-      'msg'    => 'GD Lib is not installed'
-    );
+    if(!function_exists('gd_info')) {
+      $this->status = 'error';
+      $this->msg = 'GD Lib is not installed';
+
+      return $this;
+    }
 
     if(file_exists($file) && (@filectime($this->source) < @filectime($file) || filemtime($this->source) < filemtime($file))) {
 
       array_push( $this->sources, $this->url . '/' . $this->filename() );
 
-      return $this->status = array(
-        'status' => 'success',
-        'msg'    => 'The file exists: '
-      );
+      $this->status = 'success';
+      $this->msg    = 'The file exists';
+
+      return $this;
     }
 
-    if(!is_writable(dirname($file))) return $this->status = array(
-      'status' => 'error',
-      'msg'    => 'The image file is not writable'
-    );
+    if(!is_writable(dirname($file))) {
+
+      $this->status = 'error';
+      $this->msg    = 'The image file is not writable';
+
+      return $this;
+    }
 
 
     switch($this->mime) {
@@ -405,9 +449,9 @@ class Picture {
 
     imagedestroy($thumb);
 
-    return $this->status = array(
-      'status' => 'success',
-      'msg'    => 'The image has been created: ' . $file,
-    );
+    $this->status = 'success';
+    $this->msg    = 'The image has been created: ' . $file;
+
+    return $this;
   }
 }
