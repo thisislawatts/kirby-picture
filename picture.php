@@ -12,6 +12,8 @@ function picture($obj, $options=array(), $tag=true) {
   return ($tag) ? $picture->tag() : $picture->url();
 }
 
+
+
 if (r::is_ajax() && r::get('action') === 'kirby.picture' ) {
 
   $picture = new Picture( r::get('image') );
@@ -31,14 +33,17 @@ if (r::is_ajax() && r::get('action') === 'kirby.picture' ) {
 }
 
 
+
 /**
- * 
+ * Static Class for keeping track of pictures that
+ * need to be generated.
  * 
  */
+
 class PictureLoading {
   public static $counter = array();
 
-  public static function set($key, $data) {
+  public static function set( $key, $data ) {
     return self::$counter[ $key ] = $data; 
   }
 
@@ -70,7 +75,8 @@ class Picture {
   var $upscale = false;
   var $quality = 100;
   var $alt = false;
-  
+  var $errors = array();
+
   // Options
   var $crop = false;
   var $grayscale = false;
@@ -78,51 +84,17 @@ class Picture {
 
   var $sources = array();
   
-  static $sizes = array(
-    array(
-      'width'      => 1600,
-      'height'     => 1600,
-    ),
-    array(
-      'width'      => 1280,
-      'height'     => 1280,
-    ),
-    array(
-      'width'      => 800,
-      'height'     => 800,
-    ),
-    array(
-      'width'      => 400,
-      'height'     => 400,
-     )
-  );
-
-  public static function getImageFromUrl( $url ) {
-
-    $file = str_ireplace( 'http://' . $_SERVER['HTTP_HOST'], c::get('root'), $url );
-    $info = array(
-      'name'      => f::name($file),
-      'filename'  => f::filename($file),
-      'extension' => f::extension($file),
-      'root'      => $file,
-      'modified'  => @filectime( $page->root . '/' . $file),
-      'type'      => 'image'
-    );
-
-    return new image( $info );
-  }
-
   function __construct($image, $options=array()) {
 
-
     $this->root = c::get('picture.cache.root', c::get('root') . '/pictures');
-    $this->root = c::get('picture.cache.url', '/pictures');
+    $this->url = c::get('picture.cache.url', '/pictures');
 
     if ( gettype($image) === 'string' )
       $image = self::getImageFromUrl( $image );
 
     if(!$image) return false;
     
+
     $this->obj = $image;
     
     // set some values from the image
@@ -134,8 +106,8 @@ class Picture {
     $this->mime         = $this->obj->mime();
     
     // set the max width and height
-    $this->maxWidth     = @$options['width'];
-    $this->maxHeight    = @$options['height'];
+    $this->maxWidth     = a::get($options, 'width', false);
+    $this->maxHeight    = a::get($options, 'height', false);
 
     $this->data = a::get($options, 'data', array() );
 
@@ -147,13 +119,13 @@ class Picture {
     
     // set greyscale on/off
     $this->grayscale = @$options['grayscale'];
-	
+  
     // set the quality
     $this->quality = a::get($options, 'quality', c::get('picture.quality', 100));
 
     // set the default upscale behavior
     $this->upscale = a::get($options, 'upscale', c::get('picture.upscale', false));
-	
+  
     // set the alt text
     $this->alt = a::get($options, 'alt', $this->obj->name());
 
@@ -169,8 +141,24 @@ class Picture {
     }
   }
 
+  public static function getImageFromUrl( $url ) {
+
+    $file = str_ireplace( 'http://' . $_SERVER['HTTP_HOST'], c::get('root'), $url );
+
+    $info = array(
+      'name'      => f::name($file),
+      'filename'  => f::filename($file),
+      'extension' => f::extension($file),
+      'root'      => $file,
+      'modified'  => @filectime( $page->root . '/' . $file ),
+      'type'      => 'image'
+    );
+
+    return new image( $info );
+  }
+
   function cachedImagesExist() {
-    foreach (self::$sizes as $size ) {
+    foreach (self::getSizes() as $size ) {
       $this->size( $size['width'], $size['height'] );
       if ( !file_exists( $this->file() ) )
         return false;
@@ -178,18 +166,19 @@ class Picture {
     return true;
   }
 
-  // Create our images at different sizes!
+  // Create our images at different sizes
   function generateImages() {
-    foreach ( self::$sizes as $size ) {
+    foreach ( self::getSizes() as $size ) {
       $this->size( $size['width'], $size['height'] );
       $this->create();
     }
+
   }
 
   function srcset() {
 
     if (count($this->sources) === 0 ) {
-      foreach ( self::$sizes as $size ) {
+      foreach ( self::getSizes() as $size ) {
         $this->size( $size['width'], $size['height'] );
         array_push( $this->sources, $this->url . '/' . $this->filename() );
       }
@@ -216,9 +205,13 @@ class Picture {
     $this->data['width'] = $this->obj->width();
     $this->data['height'] = $this->obj->height();
 
+    $base_size = $this->obj->width() > $this->obj->height() ? 100 : 50;
+
+    $sizes = round( ( a::get($this->data, 'scale' ) ) && a::get($this->data, 'scale') !== 100 ? $this->data['scale'] : $base_size) . "vw";
+
     return sprintf('<img id="'. $this->id .'" %1$s %2$s %3$s %5$s alt="%4$s" />',
       $class,
-      $this->lazyload ? 'data-sizes="100vw"' : 'sizes="100vw"',
+      $this->lazyload ? 'data-sizes="' . $sizes . '"' : 'sizes="' . $sizes . '"',
       $this->lazyload ? 'data-srcset="' . $this->srcset() . '"' : 'srcset="' . $this->srcset() . '"',
       html( $this->alt ),
       $this->dataAttr()
@@ -339,12 +332,28 @@ class Picture {
   }
 
   public static function getSizes() {
-    return self::$sizes;
+    return c::get('picture.sizes', array(
+       array(
+        'width'      => 1600,
+        'height'     => 1600,
+      ),
+      array(
+        'width'      => 1280,
+        'height'     => 1280,
+      ),
+      array(
+        'width'      => 800,
+        'height'     => 800,
+      ),
+      array(
+        'width'      => 400,
+        'height'     => 400,
+    ) ) );
   }
   
   function create() {
     
-    $file = $this->file();            
+    $file = $this->file();
 
     if(!function_exists('gd_info')) {
       $this->status = 'error';
@@ -363,6 +372,7 @@ class Picture {
       return $this;
     }
 
+
     if(!is_writable(dirname($file))) {
 
       $this->status = 'error';
@@ -370,7 +380,6 @@ class Picture {
 
       return $this;
     }
-
 
     switch($this->mime) {
       case 'image/jpeg':
@@ -383,20 +392,24 @@ class Picture {
         $image = @imagecreatefromgif($this->source); 
         break;
       default:
-        return $this->status = array(
-          'status' => 'error',
-          'msg'    => 'The image mime type is invalid'
-        );
+        $this->status = 'error';
+        $this->msg    = 'The image mime type is invalid';
+        return $this;
         break;
-    }       
+    }   
 
-    if(!$image) return array(
-      'status' => 'error',
-      'msg'    => 'The image could not be created'
-    );
+    if(is_null($image)) {
+      
+      $this->status = 'error';
+      $this->msg    = 'The image could not be created';
+
+      return $this;
+    }
               
+
     // make enough memory available to scale bigger images (option should be something like 36M)
     if(c::get('picture.memory')) ini_set('memory_limit', c::get('picture.memory'));
+
 
 
     if($this->crop == true) {
@@ -437,10 +450,10 @@ class Picture {
       imagecopyresampled($thumb, $image, 0, 0, 0, 0, $this->width, $this->height, $this->sourceWidth, $this->sourceHeight); 
     }    
 
-	if($this->grayscale == true) {
-		imagefilter($thumb, IMG_FILTER_GRAYSCALE);
-	}
-    
+    if($this->grayscale == true) {
+      imagefilter($thumb, IMG_FILTER_GRAYSCALE);
+    }
+
     switch($this->mime) {
       case 'image/jpeg': imagejpeg($thumb, $file, $this->quality); break;
       case 'image/png' : imagepng($thumb, $file, 0); break; 

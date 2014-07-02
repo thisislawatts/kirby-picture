@@ -24,6 +24,23 @@ You can add the following config variables to your config file (site/config/conf
     c::set('picture.cache.url', '/pictures');
     c::set('picture.quality', 100);
     c::set('picture.ajax', true);
+    c::set('picture.breakpoints', array(
+	    array(
+	      'width'      => 1600,
+	      'height'     => 1600,
+	    ),
+	    array(
+	      'width'      => 1280,
+	      'height'     => 1280,
+	    ),
+	    array(
+	      'width'      => 800,
+	      'height'     => 800,
+	    ),
+	    array(
+	      'width'      => 400,
+	      'height'     => 400,
+   ) ) );
 
 ## Requirements
 
