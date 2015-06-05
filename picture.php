@@ -4,90 +4,34 @@
  * [picture description]
  * @param  Image  $obj     [description]
  * @param  array   $options [description]
- * @param  boolean $tag     [description]
  * @return [type]           [description]
  */
-function picture($obj, $options=array(), $tag=true) {
-  $picture = new Picture($obj, $options);
-  return ($tag) ? $picture->tag() : $picture->url();
-}
-
-
-
-if (r::is_ajax() && r::get('action') === 'kirby.picture' ) {
-
-  $picture = new Picture( r::get('image') );
-
-  echo @json_encode(
-    array(
-      'status' => $picture->status,
-      'message' => $picture->msg,
-      'action'  => 'generated-image',
-      'image'   => r::get('image'),
-      'srcset'  => $picture->srcset(),
-      'data' => $picture
-    )
-  );
-
-  exit();
-}
-
-
-
-/**
- * Static Class for keeping track of pictures that
- * need to be generated.
- * 
- */
-
-class PictureLoading {
-  public static $counter = array();
-
-  public static function set( $key, $data ) {
-    return self::$counter[ $key ] = $data; 
-  }
-
-  public static function get() {
-    return self::$counter;
-  }
-
-  public static function json() {
-    return json_encode( self::$counter );
-  }
-}
 
 
 class Picture {
 
-  var $obj = null;
-  var $root = false;
-  var $url = false;
-  var $sourceWidth = 0;
-  var $sourceHeight = 0;
-  var $width = 0;
-  var $height = 0;
-  var $tmpWidth = 0;
-  var $tmpHeight = 0;
-  var $maxWidth = 0;
-  var $maxHeight = 0;
-  var $mime = false;
-  var $status = '';
-  var $upscale = false;
-  var $quality = 100;
-  var $alt = false;
-  var $errors = array();
-
-  // Options
-  var $crop = false;
-  var $grayscale = false;
-  var $lazyload = false;
-
-  var $sources = array();
+  var $thumbs;
   
-  function __construct($image, $options=array()) {
+  function __construct( $image, $options = array() ) {
 
-    $this->root = c::get('picture.cache.root', c::get('root') . '/pictures');
-    $this->url = c::get('picture.cache.url', '/pictures');
+  	$sizes = self::getSizes();
+
+  	$this->thumbs = array();
+
+  	foreach ( $sizes as $size ) {
+  		$t = new Thumb( $image, $size );
+
+  		$this->thumbs[] = sprintf('%s %sw',
+  			$t->url(),
+  			array_shift($size)
+  		);
+  	}
+
+  	$this->attributes = array (
+  		'class' => a::get( $options, 'class' )
+  	);
+
+  	return;
 
     if ( gettype($image) === 'string' )
       $image = self::getImageFromUrl( $image );
@@ -134,88 +78,30 @@ class Picture {
 
     $this->id = md5( $image->url() );
 
-    if ( c::get('picture.ajax', true ) && !r::is_ajax() && !$this->cachedImagesExist() ) {
-      PictureLoading::set( $this->id, $image->url() );
-    } else {
-      $this->generateImages();
-    }
+    $this->generateImages();
   }
 
   public static function getImageFromUrl( $url ) {
 
-    $file = str_ireplace( 'http://' . $_SERVER['HTTP_HOST'], c::get('root'), $url );
+    $kirby = kirby();
 
-    $info = array(
-      'name'      => f::name($file),
-      'filename'  => f::filename($file),
-      'extension' => f::extension($file),
-      'root'      => $file,
-      'modified'  => @filectime( $page->root . '/' . $file ),
-      'type'      => 'image'
-    );
+    $str = str_replace($kirby->urls->index(), $kirby->roots->index(), $url );
 
-    return new image( $info );
+    return new Picture( new Media( $str ) );
   }
 
-  function cachedImagesExist() {
-    foreach (self::getSizes() as $size ) {
-      $this->size( $size['width'], $size['height'] );
-      if ( !file_exists( $this->file() ) )
-        return false;
-    }
-    return true;
-  }
-
-  // Create our images at different sizes
-  function generateImages() {
-    foreach ( self::getSizes() as $size ) {
-      $this->size( $size['width'], $size['height'] );
-      $this->create();
-    }
-
-  }
-
-  function srcset() {
-
-    if (count($this->sources) === 0 ) {
-      foreach ( self::getSizes() as $size ) {
-        $this->size( $size['width'], $size['height'] );
-        array_push( $this->sources, $this->url . '/' . $this->filename() );
-      }
-    }
-    
-    $srcset = array();
-
-    foreach ($this->sources as $src) {
-
-      $parts = explode('.', $src);
-
-      $srcset[] = $src . ' ' . $parts[1] . 'w';
-    }
-
-    return implode( ', ' , $srcset );
-  }
-  
   function tag() {
 
-    if(!$this->obj) return false;
+  	return html::tag('img', null, array_merge(
+  		$this->attributes,
+  		array(
+	  		'srcset' => implode(',', $this->thumbs ),
+	  	)
+  	) );
+  }
 
-    $class = (!empty($this->className)) ? ' class="' . $this->className . '"' : '';
-
-    $this->data['width'] = $this->obj->width();
-    $this->data['height'] = $this->obj->height();
-
-    $base_size = $this->obj->width() > $this->obj->height() ? 100 : 50;
-
-    $sizes = round( ( a::get($this->data, 'scale' ) ) && a::get($this->data, 'scale') !== 100 ? $this->data['scale'] : $base_size) . "vw";
-
-    return sprintf('<img id="'. $this->id .'" %1$s %2$s %3$s %5$s alt="%4$s" />',
-      $class,
-      $this->lazyload ? 'data-sizes="' . $sizes . '"' : 'sizes="' . $sizes . '"',
-      $this->lazyload ? 'data-srcset="' . $this->srcset() . '"' : 'srcset="' . $this->srcset() . '"',
-      html( $this->alt ),
-      $this->dataAttr()
-    );
+  function className() {
+  	return '';
   }
 
   function dataAttr() {
@@ -242,11 +128,11 @@ class Picture {
     $options .= ($this->maxWidth)  ? '.' . $this->maxWidth  : '.' . 0;
     $options .= ($this->maxHeight) ? '.' . $this->maxHeight : '.' . 0;
 
-    return md5( $this->source ) . $options . '.' . $this->obj->extension;
-
+    return md5( $this->source ) . $options . '.' . $this->obj->extension();
   }
       
   function file() {
+
     return $this->root . '/' . $this->filename();
   }
 
@@ -277,16 +163,21 @@ class Picture {
       if(!$maxWidth)  $maxWidth  = $maxHeight;      
       if(!$maxHeight) $maxHeight = $maxWidth;      
 
-      $sourceRatio = size::ratio($this->sourceWidth, $this->sourceHeight);
-      $thumbRatio  = size::ratio($maxWidth, $maxHeight);
+      $sourceRatio = $this->sourceWidth / $this->sourceHeight;
+      $thumbRatio  = $maxWidth / $maxHeight;
                       
-      if($sourceRatio > $thumbRatio) {
-        // fit the height of the source
-        $size = size::fit_height($this->sourceWidth, $this->sourceHeight, $maxHeight, true);
-      } else {
-        // fit the height of the source
-        $size = size::fit_width($this->sourceWidth, $this->sourceHeight, $maxWidth, true);                
-      }
+      // if($sourceRatio > $thumbRatio) {
+      //   // fit the height of the source
+      //   $size = size::fit_height($this->sourceWidth, $this->sourceHeight, $maxHeight, true);
+      // } else {
+      //   // fit the height of the source
+      //   $size = size::fit_width($this->sourceWidth, $this->sourceHeight, $maxWidth, true);                
+      // }
+
+      $size = array(
+      	'width' => $this->sourceWidth,
+      	'height' => $this->sourceHeight
+      );
                           
       $this->tmpWidth  = $size['width'];
       $this->tmpHeight = $size['height'];
@@ -297,32 +188,38 @@ class Picture {
 
     }
         
-    // if there's a maxWidth and a maxHeight
-    if($maxWidth && $maxHeight) {
+    // // if there's a maxWidth and a maxHeight
+    // if($maxWidth && $maxHeight) {
       
-      // if the source width is bigger then the source height
-      // we need to fit the width
-      if($this->sourceWidth > $this->sourceHeight) {
-        $size = size::fit_width($this->sourceWidth, $this->sourceHeight, $maxWidth, $upscale);
+    //   // if the source width is bigger then the source height
+    //   // we need to fit the width
+    //   if($this->sourceWidth > $this->sourceHeight) {
+    //     $size = size::fit_width($this->sourceWidth, $this->sourceHeight, $maxWidth, $upscale);
         
-        // do another check for the maxHeight
-        if($size['height'] > $maxHeight) $size = size::fit_height($size['width'], $size['height'], $maxHeight);
+    //     // do another check for the maxHeight
+    //     if($size['height'] > $maxHeight) $size = size::fit_height($size['width'], $size['height'], $maxHeight);
         
-      } else {
-        $size = size::fit_height($this->sourceWidth, $this->sourceHeight, $maxHeight, $upscale);                    
+    //   } else {
+    //     $size = size::fit_height($this->sourceWidth, $this->sourceHeight, $maxHeight, $upscale);                    
 
-        // do another check for the maxWidth
-        if($size['width'] > $maxWidth) $size = size::fit_width($size['width'], $size['height'], $maxWidth);
+    //     // do another check for the maxWidth
+    //     if($size['width'] > $maxWidth) $size = size::fit_width($size['width'], $size['height'], $maxWidth);
 
-      }
+    //   }
                 
-    } elseif($maxWidth) {
-      $size = size::fit_width($this->sourceWidth, $this->sourceHeight, $maxWidth, $upscale);
-    } elseif($maxHeight) {
-      $size = size::fit_height($this->sourceWidth, $this->sourceHeight, $maxHeight, $upscale);
-    } else {
-      $size = array('width' => $this->sourceWidth, 'height' => $this->sourceHeight);
-    }
+    // } elseif($maxWidth) {
+    //   $size = size::fit_width($this->sourceWidth, $this->sourceHeight, $maxWidth, $upscale);
+    // } elseif($maxHeight) {
+    //   $size = size::fit_height($this->sourceWidth, $this->sourceHeight, $maxHeight, $upscale);
+    // } else {
+    //   $size = array('width' => $this->sourceWidth, 'height' => $this->sourceHeight);
+    // }
+
+    $size = array(
+		'width' => $this->sourceWidth,
+		'height' => $this->sourceHeight
+	);
+
 
     $this->width  = $size['width'];
     $this->height = $size['height'];
@@ -357,7 +254,7 @@ class Picture {
 
     if(!function_exists('gd_info')) {
       $this->status = 'error';
-      $this->msg = 'GD Lib is not installed';
+      throw new Exception('GD Lib is not installed');
 
       return $this;
     }
@@ -367,7 +264,7 @@ class Picture {
       array_push( $this->sources, $this->url . '/' . $this->filename() );
 
       $this->status = 'success';
-      $this->msg    = 'The file exists';
+      throw new Exception('The file exists');
 
       return $this;
     }
@@ -376,7 +273,7 @@ class Picture {
     if(!is_writable(dirname($file))) {
 
       $this->status = 'error';
-      $this->msg    = 'The image file is not writable';
+      throw new Exception('The image file is not writable: ' . dirname( $file ) );
 
       return $this;
     }
@@ -393,7 +290,7 @@ class Picture {
         break;
       default:
         $this->status = 'error';
-        $this->msg    = 'The image mime type is invalid';
+        throw new Exception('The image mime type is invalid');
         return $this;
         break;
     }   
@@ -401,16 +298,14 @@ class Picture {
     if(is_null($image)) {
       
       $this->status = 'error';
-      $this->msg    = 'The image could not be created';
+      throw new Exception('The image could not be created');
 
       return $this;
     }
-              
+
 
     // make enough memory available to scale bigger images (option should be something like 36M)
     if(c::get('picture.memory')) ini_set('memory_limit', c::get('picture.memory'));
-
-
 
     if($this->crop == true) {
 
@@ -468,3 +363,111 @@ class Picture {
     return $this;
   }
 }
+
+
+kirbytext::$tags['image'] = array(
+  'attr' => array(
+    'width',
+    'height',
+    'alt',
+    'text',
+    'title',
+    'class',
+    'imgclass',
+    'linkclass',
+    'caption',
+    'link',
+    'target',
+    'popup',
+    'rel'
+  ),
+  'html' => function($tag) {
+
+    $url     = $tag->attr('image');
+    $alt     = $tag->attr('alt');
+    $title   = $tag->attr('title');
+    $link    = $tag->attr('link');
+    $caption = $tag->attr('caption');
+    $file    = $tag->file($url);
+
+    // use the file url if available and otherwise the given url
+    $url = $file ? $file->url() : url($url);
+
+    // alt is just an alternative for text
+    if($text = $tag->attr('text')) $alt = $text;
+
+    // try to get the title from the image object and use it as alt text
+    if($file) {
+
+      if(empty($alt) and $file->alt() != '') {
+        $alt = $file->alt();
+      }
+
+      if(empty($title) and $file->title() != '') {
+        $title = $file->title();
+      }
+
+    }
+
+    if(empty($alt)) $alt = pathinfo($url, PATHINFO_FILENAME);
+
+    // link builder
+    $_link = function($image) use($tag, $url, $link, $file) {
+
+      if(empty($link)) return $image;
+
+      // build the href for the link
+      if($link == 'self') {
+        $href = $url;
+      } else if($file and $link == $file->filename()) {
+        $href = $file->url();
+      } else {
+        $href = $link;
+      }
+
+      return html::a(url($href), $image, array(
+        'rel'    => $tag->attr('rel'),
+        'class'  => $tag->attr('linkclass'),
+        'title'  => $tag->attr('title'),
+        'target' => $tag->target()
+      ));
+
+    };
+
+    // image builder
+    $_image = function($class) use($tag, $url, $alt, $title) {
+    	$picture = picture::getImageFromUrl( $url );
+
+      return $picture->tag();
+
+      return html::tag( 'img', null, array(
+      	'srcset' => $t->url(),
+        'width'  => $tag->attr('width'),
+        'height' => $tag->attr('height'),
+        'class'  => $class,
+        'title'  => $title,
+        'alt'    => $alt
+      ));
+    };
+
+    if(kirby()->option('kirbytext.image.figure') or !empty($caption)) {
+      $image  = $_link($_image($tag->attr('imgclass')));
+      $figure = new Brick('figure');
+      $figure->addClass($tag->attr('class'));
+      $figure->append($image);
+      if(!empty($caption)) {
+        $figure->append('<figcaption>' . html($caption) . '</figcaption>');
+      }
+      return $figure;
+    } else {
+      $class = trim($tag->attr('class') . ' ' . $tag->attr('imgclass'));
+      return $_link($_image($class));
+    }
+
+  }
+);
+
+function picture($obj, $options=array()) {
+  $picture = new Picture($obj, $options);
+  echo $picture->tag();
+};
