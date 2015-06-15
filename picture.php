@@ -21,10 +21,12 @@ class Picture {
   	foreach ( $sizes as $size ) {
   		$t = new Thumb( $image, $size );
 
-  		$this->thumbs[] = sprintf('%s %sw',
-  			$t->url(),
-  			array_shift($size)
-  		);
+      if ( $t->url() ) {
+        $this->thumbs[] = sprintf('%s %sw',
+          $t->url(),
+          array_shift($size)
+        );
+      }
   	}
 
   	$this->attributes = array (
