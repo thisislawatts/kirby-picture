@@ -8,9 +8,9 @@ The picture plugin makes it easy to include smaller, resized versions of your im
 
 Put the picture/ directory in your site/plugins folder. Add the plugins folder if it isn't there yet.
 
-Be sure to include the bundled version of picturefill.js in the head of your document.
+Be sure to move the bundled version of picturefill.js into the assets/ directory then include it into the head of your document.
 
-	<?php echo js('site/plugins/kirby-picture/js/picturefill.min.js'); ?>
+	<?php echo js('assets/picturefill.min.js'); ?>
 
 ## How to use it?
 
