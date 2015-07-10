@@ -20,6 +20,7 @@ Be sure to include the bundled version of picturefill.js in the head of your doc
 
 You can add the following config variables to your config file (site/config/config.php) to adjust the default settings of the thumb plugin:
 
+```php
     c::set('picture.cache.root', c::get('root') . '/pictures');
     c::set('picture.cache.url', '/pictures');
     c::set('picture.quality', 100);
@@ -41,6 +42,8 @@ You can add the following config variables to your config file (site/config/conf
 	      'width'      => 400,
 	      'height'     => 400,
    ) ) );
+```
+
 
 ## Requirements
 
